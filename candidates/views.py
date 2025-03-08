@@ -1,5 +1,7 @@
 from django.shortcuts import render
 from rest_framework import generics
+from rest_framework.response import Response
+from rest_framework import status
 from .models import Candidate
 from .serializers import CandidateSerializer
 from django.db.models import Count, Q
@@ -43,12 +45,25 @@ class CandidateSearchView(generics.ListAPIView):
 
         if not query:
             return Candidate.objects.none()
-
         search_words = query.split()
 
         q_objects = Q()
         for word in search_words:
             q_objects |= Q(name__icontains=word)
 
-        context=Candidate.objects.filter(q_objects).annotate(match_count=Count('name', filter=q_objects)).order_by('-match_count')
+        context=(Candidate.objects.filter(q_objects)
+                 .annotate(match_count=Count('name', filter=q_objects))
+                 .order_by('-match_count'))
         return context
+
+    def list(self, request, *args, **kwargs):
+        query = self.request.query_params.get('q', '').strip()
+
+        if not query:
+            return Response({"error": "Search query cannot be empty"}, status=400)
+        queryset = self.get_queryset()
+
+        if not queryset.exists():
+            return Response({"message": f"No candidates found for '{query}'"}, status=404)
+
+        return super().list(request, *args, **kwargs)
